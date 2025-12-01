@@ -1,0 +1,65 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: secure_dms_db
+    environment:
+      POSTGRES_USER: dmsadmin
+      POSTGRES_PASSWORD: dms_secure_pass_2024
+      POSTGRES_DB: secure_dms
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dmsadmin -d secure_dms"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - dms_network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: secure_dms_backend
+    environment:
+      NODE_ENV: development
+      PORT: 5000
+      DATABASE_URL: postgresql://dmsadmin:dms_secure_pass_2024@postgres:5432/secure_dms
+      JWT_SECRET: your-super-secret-jwt-key-change-this-in-production
+      JWT_EXPIRES_IN: 24h
+      STORAGE_ROOT: /storage
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - /home/vilas/Secure_DMS_Storage:/storage
+    networks:
+      - dms_network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: secure_dms_frontend
+    environment:
+      VITE_API_URL: http://localhost:5000/api
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - dms_network
+
+volumes:
+  postgres_data:
+
+networks:
+  dms_network:
+    driver: bridge
