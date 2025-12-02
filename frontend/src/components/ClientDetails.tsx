@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import api from "../services/api";
 
 type Client = {
@@ -172,15 +172,16 @@ const ClientDetails: React.FC<{ client: Client; onBack: () => void }> = ({ clien
       form.append("file", fileToUpload, fileToUpload.name);
       form.append("folder", uploadFolder);
 
-      await api.post(`/files/upload/${client.id}`, form, {
+      const res = await api.post(`/files/upload/${client.id}`, form, {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
-      showMessage("success", "Uploaded successfully");
+      console.log("Upload response:", res.data);
+      showMessage("success", `Uploaded: ${res.data.file}`);
 
       // refresh file list if we're viewing the same folder
       if (uploadFolder === selectedFolder) {
-        loadFiles(selectedFolder);
+        await loadFiles(selectedFolder);
       }
 
       setFileToUpload(null);
@@ -224,6 +225,8 @@ const ClientDetails: React.FC<{ client: Client; onBack: () => void }> = ({ clien
         headers: { "Content-Type": "multipart/form-data" },
       });
 
+      console.log("scan-upload response:", res.data);
+
       const tempPdfName: string | undefined = res.data?.pdf;
       if (!tempPdfName) {
         showMessage("error", "Server did not return generated PDF name");
@@ -239,6 +242,8 @@ const ClientDetails: React.FC<{ client: Client; onBack: () => void }> = ({ clien
       );
 
       let finalName = tempPdfName;
+
+      // If user provided a new name, try to rename on server
       if (userInput && userInput.trim() !== "") {
         try {
           const ren = await api.post(`/files/rename/${client.id}`, {
@@ -246,23 +251,35 @@ const ClientDetails: React.FC<{ client: Client; onBack: () => void }> = ({ clien
             oldName: tempPdfName,
             newName: userInput.trim(),
           });
-          finalName = ren.data?.finalName || tempPdfName;
-        } catch (err) {
-          console.error("Rename failed:", err);
-          showMessage("error", "Uploaded but rename failed (kept generated name)");
-        }
-      }
 
-      showMessage("success", `Uploaded: ${finalName}`);
+          console.log("rename response:", ren.data);
+          finalName = ren.data?.finalName || tempPdfName;
+          showMessage("success", `Uploaded and renamed to: ${finalName}`);
+        } catch (err: any) {
+          // Detailed error reporting to help debug why rename failed
+          console.error("Rename failed:", err);
+          const msg =
+            err?.response?.data?.error ||
+            err?.message ||
+            "Rename failed; kept generated name";
+          showMessage("error", msg);
+          finalName = tempPdfName;
+        }
+      } else {
+        // user kept generated name
+        showMessage("success", `Uploaded: ${finalName}`);
+      }
 
       // cleanup previews & selected files
       scanPreviews.forEach((u) => URL.revokeObjectURL(u));
       setScanPreviews([]);
       setScanFiles([]);
 
-      // refresh file list if viewing same folder
-      if (scanFolder === selectedFolder) {
-        await loadFiles(selectedFolder);
+      // refresh file list if viewing same folder (use scanFolder explicitly)
+      // small delay to ensure filesystem is stable (usually not required but helps on some setups)
+      if (scanFolder) {
+        await new Promise((r) => setTimeout(r, 250));
+        await loadFiles(scanFolder);
       }
     } catch (err) {
       console.error("Scan upload failed:", err);

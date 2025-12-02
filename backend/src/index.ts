@@ -17,12 +17,12 @@ const PORT = process.env.PORT || 5000;
 
 app.use(cors());
 
-// IMPORTANT: File upload routes BEFORE JSON parser
-app.use("/api/files", fileRoutes);
-
-// JSON parsers
+// ⛔ FIX: JSON parsers must be above ALL routes
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// File routes (works correctly now)
+app.use("/api/files", fileRoutes);
 
 // Other API routes
 app.use('/api/auth', authRoutes);
